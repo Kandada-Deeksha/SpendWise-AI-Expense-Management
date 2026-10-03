@@ -4,12 +4,15 @@ from datetime import datetime
 from extensions import db
 from models.expense import Expense
 
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
 
 expense_bp = Blueprint("expense", __name__)
 
 
 # Test route
 @expense_bp.route("/test", methods=["GET"])
+@jwt_required()
 def test_expense():
     return jsonify({
         "message": "Expense API is working!"
@@ -18,7 +21,10 @@ def test_expense():
 
 # Add a new expense
 @expense_bp.route("/", methods=["POST"])
+@jwt_required()
 def add_expense():
+
+    user_id = int(get_jwt_identity())
 
     data = request.get_json()
 
@@ -28,7 +34,6 @@ def add_expense():
         }), 400
 
     required_fields = [
-        "user_id",
         "amount",
         "category",
         "expense_date"
@@ -40,16 +45,45 @@ def add_expense():
                 "error": f"{field} is required"
             }), 400
 
+    # Validate amount
+    try:
+        amount = float(data["amount"])
+    except (TypeError, ValueError):
+        return jsonify({
+            "error": "Amount must be a valid number"
+        }), 400
+
+    if amount <= 0:
+        return jsonify({
+            "error": "Amount must be greater than 0"
+        }), 400
+
+    # Validate category
+    category = data["category"]
+
+    if not isinstance(category, str) or not category.strip():
+        return jsonify({
+            "error": "Category must be a non-empty string"
+        }), 400
+
+    # Validate date
+    try:
+        expense_date = datetime.strptime(
+            data["expense_date"],
+            "%Y-%m-%d"
+        ).date()
+    except (TypeError, ValueError):
+        return jsonify({
+            "error": "expense_date must be in YYYY-MM-DD format"
+        }), 400
+
     try:
         expense = Expense(
-            user_id=data["user_id"],
-            amount=data["amount"],
-            category=data["category"],
+            user_id=user_id,
+            amount=amount,
+            category=category.strip(),
             description=data.get("description"),
-            expense_date=datetime.strptime(
-                data["expense_date"],
-                "%Y-%m-%d"
-            ).date()
+            expense_date=expense_date
         )
 
         db.session.add(expense)
@@ -60,24 +94,20 @@ def add_expense():
             "expense_id": expense.id
         }), 201
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
 
         return jsonify({
-            "error": str(e)
+            "error": "Failed to add expense"
         }), 500
 
 
-# Get all expenses for a user
+# Get all expenses for logged-in user
 @expense_bp.route("/", methods=["GET"])
+@jwt_required()
 def get_expenses():
 
-    user_id = request.args.get("user_id")
-
-    if not user_id:
-        return jsonify({
-            "error": "user_id is required"
-        }), 400
+    user_id = int(get_jwt_identity())
 
     expenses = Expense.query.filter_by(
         user_id=user_id
@@ -91,7 +121,7 @@ def get_expenses():
         result.append({
             "id": expense.id,
             "user_id": expense.user_id,
-            "amount": expense.amount,
+            "amount": float(expense.amount),
             "category": expense.category,
             "description": expense.description,
             "expense_date": expense.expense_date.isoformat(),
@@ -103,11 +133,19 @@ def get_expenses():
         })
 
     return jsonify(result), 200
-    # Update an existing expense
+
+
+# Update an existing expense
 @expense_bp.route("/<int:expense_id>", methods=["PUT"])
+@jwt_required()
 def update_expense(expense_id):
 
-    expense = Expense.query.get(expense_id)
+    user_id = int(get_jwt_identity())
+
+    expense = Expense.query.filter_by(
+        id=expense_id,
+        user_id=user_id
+    ).first()
 
     if not expense:
         return jsonify({
@@ -116,20 +154,56 @@ def update_expense(expense_id):
 
     data = request.get_json()
 
-    if "amount" in data:
-        expense.amount = data["amount"]
+    if not data:
+        return jsonify({
+            "error": "Request body is required"
+        }), 400
 
+    # Validate amount if provided
+    if "amount" in data:
+
+        try:
+            amount = float(data["amount"])
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "Amount must be a valid number"
+            }), 400
+
+        if amount <= 0:
+            return jsonify({
+                "error": "Amount must be greater than 0"
+            }), 400
+
+        expense.amount = amount
+
+    # Validate category if provided
     if "category" in data:
-        expense.category = data["category"]
+
+        if (
+            not isinstance(data["category"], str)
+            or not data["category"].strip()
+        ):
+            return jsonify({
+                "error": "Category must be a non-empty string"
+            }), 400
+
+        expense.category = data["category"].strip()
 
     if "description" in data:
         expense.description = data["description"]
 
+    # Validate date if provided
     if "expense_date" in data:
-        expense.expense_date = datetime.strptime(
-            data["expense_date"],
-            "%Y-%m-%d"
-        ).date()
+
+        try:
+            expense.expense_date = datetime.strptime(
+                data["expense_date"],
+                "%Y-%m-%d"
+            ).date()
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "expense_date must be in YYYY-MM-DD format"
+            }), 400
 
     try:
         db.session.commit()
@@ -138,20 +212,25 @@ def update_expense(expense_id):
             "message": "Expense updated successfully"
         }), 200
 
-    except Exception as e:
-
+    except Exception:
         db.session.rollback()
 
         return jsonify({
-            "error": str(e)
+            "error": "Failed to update expense"
         }), 500
 
 
 # Delete an existing expense
 @expense_bp.route("/<int:expense_id>", methods=["DELETE"])
+@jwt_required()
 def delete_expense(expense_id):
 
-    expense = Expense.query.get(expense_id)
+    user_id = int(get_jwt_identity())
+
+    expense = Expense.query.filter_by(
+        id=expense_id,
+        user_id=user_id
+    ).first()
 
     if not expense:
         return jsonify({
@@ -166,10 +245,9 @@ def delete_expense(expense_id):
             "message": "Expense deleted successfully"
         }), 200
 
-    except Exception as e:
-
+    except Exception:
         db.session.rollback()
 
         return jsonify({
-            "error": str(e)
+            "error": "Failed to delete expense"
         }), 500
