@@ -90,11 +90,12 @@ def create_savings_goal():
         ).date()
 
         goal = SavingsGoal(
-            user_id=user_id,
-            goal_name=data["goal_name"].strip(),
-            target_amount=float(data["target_amount"]),
-            target_date=target_date
-        )
+    user_id=user_id,
+    goal_name=data["goal_name"].strip(),
+    target_amount=float(data["target_amount"]),
+    current_amount=float(data.get("current_amount", 0)),
+    target_date=target_date
+)
 
         db.session.add(goal)
         db.session.commit()
@@ -129,16 +130,17 @@ def get_savings_goals():
 
     for goal in goals:
         result.append({
-            "id": goal.id,
-            "goal_name": goal.goal_name,
-            "target_amount": float(goal.target_amount),
-            "target_date": goal.target_date.isoformat(),
-            "created_at": (
-                goal.created_at.isoformat()
-                if goal.created_at
-                else None
-            )
-        })
+    "id": goal.id,
+    "goal_name": goal.goal_name,
+    "target_amount": float(goal.target_amount),
+    "current_amount": float(goal.current_amount),
+    "target_date": goal.target_date.isoformat(),
+    "created_at": (
+        goal.created_at.isoformat()
+        if goal.created_at
+        else None
+    )
+})
 
     return jsonify(result), 200
 
@@ -161,16 +163,17 @@ def get_savings_goal(goal_id):
         }), 404
 
     return jsonify({
-        "id": goal.id,
-        "goal_name": goal.goal_name,
-        "target_amount": float(goal.target_amount),
-        "target_date": goal.target_date.isoformat(),
-        "created_at": (
-            goal.created_at.isoformat()
-            if goal.created_at
-            else None
-        )
-    }), 200
+    "id": goal.id,
+    "goal_name": goal.goal_name,
+    "target_amount": float(goal.target_amount),
+    "current_amount": float(goal.current_amount),
+    "target_date": goal.target_date.isoformat(),
+    "created_at": (
+        goal.created_at.isoformat()
+        if goal.created_at
+        else None
+    )
+}), 200
 
 
 # Update a savings goal

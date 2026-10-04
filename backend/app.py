@@ -25,7 +25,11 @@ app.config.from_object(Config)
 db.init_app(app)
 JWTManager(app)
 
-CORS(app)
+CORS(
+    app,
+    resources={r"/api/*": {"origins": "http://localhost:5174"}},
+    supports_credentials=True,
+)
 
 app.register_blueprint(
     expense_bp,
@@ -37,7 +41,7 @@ app.register_blueprint(
 )
 app.register_blueprint(
     budget_bp,
-    url_prefix="/api/budgets"
+    url_prefix="/api/budget"
 )
 app.register_blueprint(
     savings_goal_bp,
