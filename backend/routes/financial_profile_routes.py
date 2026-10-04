@@ -114,9 +114,23 @@ def create_or_update_profile():
         db.session.commit()
 
         return jsonify({
-            "message": message,
-            "profile_id": profile.id
-        }), 200
+    "message": message,
+    "profile": {
+        "id": profile.id,
+        "age": profile.age,
+        "occupation": profile.occupation,
+        "city_tier": profile.city_tier,
+        "monthly_income": float(profile.monthly_income),
+        "desired_savings_percentage": float(
+            profile.desired_savings_percentage
+        ),
+        "created_at": (
+            profile.created_at.isoformat()
+            if profile.created_at
+            else None
+        )
+    }
+}), 200
 
     except Exception:
         db.session.rollback()

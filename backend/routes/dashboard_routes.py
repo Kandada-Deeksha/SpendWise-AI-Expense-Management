@@ -30,6 +30,7 @@ def dashboard_summary():
         .first()
     )
 
+    # If the user has no expenses yet, return an empty dashboard
     if not latest_expense:
         return jsonify({
             "message": "No expense data available.",
@@ -45,7 +46,10 @@ def dashboard_summary():
     current_year = latest_expense.expense_date.year
     current_month = latest_expense.expense_date.month
 
-    # Total expenses across all recorded transactions
+    # ============================================================
+    # TOTAL EXPENSES
+    # ============================================================
+
     total_expenses = (
         Expense.query
         .filter_by(user_id=user_id)
@@ -57,13 +61,22 @@ def dashboard_summary():
 
     total_expenses = float(total_expenses or 0)
 
-    # Current month's total expenses
+    # ============================================================
+    # CURRENT MONTH EXPENSES
+    # ============================================================
+
     monthly_expenses = (
         Expense.query
         .filter(
             Expense.user_id == user_id,
-            extract("year", Expense.expense_date) == current_year,
-            extract("month", Expense.expense_date) == current_month
+            extract(
+                "year",
+                Expense.expense_date
+            ) == current_year,
+            extract(
+                "month",
+                Expense.expense_date
+            ) == current_month
         )
         .with_entities(
             func.sum(Expense.amount)
@@ -73,19 +86,30 @@ def dashboard_summary():
 
     monthly_expenses = float(monthly_expenses or 0)
 
-    # Category-wise spending for the current month
+    # ============================================================
+    # CATEGORY-WISE CURRENT MONTH EXPENSES
+    # ============================================================
+
     category_results = (
         Expense.query
         .filter(
             Expense.user_id == user_id,
-            extract("year", Expense.expense_date) == current_year,
-            extract("month", Expense.expense_date) == current_month
+            extract(
+                "year",
+                Expense.expense_date
+            ) == current_year,
+            extract(
+                "month",
+                Expense.expense_date
+            ) == current_month
         )
         .with_entities(
             Expense.category,
             func.sum(Expense.amount)
         )
-        .group_by(Expense.category)
+        .group_by(
+            Expense.category
+        )
         .all()
     )
 
@@ -94,7 +118,10 @@ def dashboard_summary():
         for row in category_results
     }
 
-    # Current month's budget
+    # ============================================================
+    # CURRENT MONTH BUDGET
+    # ============================================================
+
     budget = (
         Budget.query
         .filter_by(
@@ -109,7 +136,9 @@ def dashboard_summary():
 
     if budget:
 
-        budget_amount = float(budget.amount)
+        budget_amount = float(
+            budget.amount
+        )
 
         remaining_budget = (
             budget_amount - monthly_expenses
@@ -122,19 +151,36 @@ def dashboard_summary():
         )
 
         budget_data = {
-            "amount": round(budget_amount, 2),
-            "spent": round(monthly_expenses, 2),
-            "remaining": round(remaining_budget, 2),
+            "amount": round(
+                budget_amount,
+                2
+            ),
+            "spent": round(
+                monthly_expenses,
+                2
+            ),
+            "remaining": round(
+                remaining_budget,
+                2
+            ),
             "usage_percentage": round(
                 usage_percentage,
                 2
             )
         }
 
-    # Savings goals
+    # ============================================================
+    # SAVINGS GOALS
+    # ============================================================
+
     savings_goals = (
         SavingsGoal.query
-        .filter_by(user_id=user_id)
+        .filter_by(
+            user_id=user_id
+        )
+        .order_by(
+            SavingsGoal.target_date.asc()
+        )
         .all()
     )
 
@@ -146,20 +192,36 @@ def dashboard_summary():
                 float(goal.target_amount),
                 2
             ),
-            "target_date": goal.target_date.isoformat()
+            "current_amount": round(
+                float(goal.current_amount),
+                2
+            ),
+            "target_date": (
+                goal.target_date.isoformat()
+                if goal.target_date
+                else None
+            )
         }
         for goal in savings_goals
     ]
 
-    # ML prediction
+    # ============================================================
+    # ML PREDICTION
+    # ============================================================
+
     prediction_data = None
+    prediction_error = None
 
     try:
 
-        features = generate_ml_features(user_id)
+        features = generate_ml_features(
+            user_id
+        )
 
         predicted_expense = (
-            predict_next_month_expense(features)
+            predict_next_month_expense(
+                features
+            )
         )
 
         recommended_budget = (
@@ -168,24 +230,39 @@ def dashboard_summary():
 
         prediction_data = {
             "predicted_next_month_expense": round(
-                predicted_expense,
+                float(predicted_expense),
                 2
             ),
             "recommended_next_month_budget": round(
-                recommended_budget,
+                float(recommended_budget),
                 2
             )
         }
 
-    except ValueError:
+    except ValueError as exc:
 
-        prediction_data = None
+        # Usually indicates that the user does not have
+        # enough historical data or required ML features.
+        prediction_error = str(exc)
 
-    except Exception:
+    except Exception as exc:
 
-        prediction_data = None
+        # Keep the API running, but preserve the actual
+        # reason in the backend console instead of silently
+        # hiding the problem.
+        prediction_error = str(exc)
 
-    return jsonify({
+    if prediction_error:
+        print(
+            f"[Dashboard Prediction] "
+            f"User {user_id}: {prediction_error}"
+        )
+
+    # ============================================================
+    # FINAL DASHBOARD RESPONSE
+    # ============================================================
+
+    response_data = {
         "year": current_year,
         "month": current_month,
         "total_expenses": round(
@@ -196,9 +273,15 @@ def dashboard_summary():
             monthly_expenses,
             2
         ),
-        "category_wise_expenses": category_wise_expenses,
+        "category_wise_expenses": (
+            category_wise_expenses
+        ),
         "budget": budget_data,
         "savings_goals": savings_goal_data,
         "prediction": prediction_data,
         "currency": "INR"
-    }), 200
+    }
+
+    return jsonify(
+        response_data
+    ), 200

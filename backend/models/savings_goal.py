@@ -26,6 +26,12 @@ class SavingsGoal(db.Model):
         nullable=False
     )
 
+    current_amount = db.Column(
+        db.Float,
+        nullable=False,
+        default=0.0
+    )
+
     target_date = db.Column(
         db.Date,
         nullable=False
