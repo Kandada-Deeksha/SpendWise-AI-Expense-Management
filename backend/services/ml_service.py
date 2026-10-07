@@ -37,6 +37,11 @@ selected_features = joblib.load(SELECTED_FEATURES_PATH)
 def predict_next_month_expense(data):
     """
     Predict next month's total expense using the trained SpendWise model.
+
+    IMPORTANT:
+    The final Gradient Boosting model was trained on the
+    processed (encoded) features WITHOUT StandardScaler.
+    Therefore, do not scale the input before prediction.
     """
 
     input_data = pd.DataFrame([data])
@@ -52,7 +57,10 @@ def predict_next_month_expense(data):
         if feature not in categorical_features
     ]
 
+    # --------------------------------------------------
     # Encode categorical features
+    # --------------------------------------------------
+
     encoded = encoder.transform(
         input_data[categorical_features]
     )
@@ -67,10 +75,18 @@ def predict_next_month_expense(data):
         index=input_data.index
     )
 
-    # Keep numerical features in the original training order
-    numerical_df = input_data[numerical_features].copy()
+    # --------------------------------------------------
+    # Keep numerical features
+    # --------------------------------------------------
 
+    numerical_df = input_data[
+        numerical_features
+    ].copy()
+
+    # --------------------------------------------------
     # Combine numerical + encoded categorical features
+    # --------------------------------------------------
+
     processed_data = pd.concat(
         [
             numerical_df,
@@ -79,29 +95,36 @@ def predict_next_month_expense(data):
         axis=1
     )
 
+    # --------------------------------------------------
     # Ensure exact feature order used during training
-    feature_order = list(
-        scaler.feature_names_in_
-    )
+    # --------------------------------------------------
+
+    if hasattr(model, "feature_names_in_"):
+        feature_order = list(
+            model.feature_names_in_
+        )
+    else:
+        feature_order = list(
+            scaler.feature_names_in_
+        )
 
     processed_data = processed_data[
         feature_order
     ]
 
-    # Scale features
-    scaled_data = scaler.transform(
-        processed_data
-    )
-    # Preserve feature names after scaling
-    scaled_data = pd.DataFrame(
-        scaled_data,
-        columns=feature_order,
-        index=processed_data.index
-    )
+    # --------------------------------------------------
+    # IMPORTANT:
+    # Do NOT scale the data here.
+    #
+    # The final model was trained using
+    # X_train_processed, not X_train_scaled.
+    # --------------------------------------------------
 
-    # Predict
     prediction = model.predict(
-        scaled_data
+        processed_data
     )[0]
 
-    return float(prediction)
+    # Prevent negative expense predictions
+    prediction = max(0.0, float(prediction))
+
+    return prediction
